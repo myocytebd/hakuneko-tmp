@@ -23,6 +23,7 @@ export default class Connector {
         this.mangaCache = undefined;
         //
         this.existingMangas = [];
+        this.config = {};
         /*
          * initialize the default request options
          * these request options will also be used for download jobs (image/media stream downloads)
@@ -564,6 +565,20 @@ export default class Connector {
         return uri.href;
     }
 
+    static decodeConnectorURI( maybeConnectorURI ) {
+        try {
+            let url = new URL( maybeConnectorURI );
+            if (url.protocol !== 'connector:')
+                return maybeConnectorURI;
+            let payloadInBase64 = url.searchParams.get('payload');
+            let payloadBytes = CryptoJS.enc.Base64.parse(payloadInBase64);
+            let payload = CryptoJS.enc.Utf8.stringify(payloadBytes);
+            return payload.slice(1, -1);
+        } catch (e) {
+            return maybeConnectorURI;
+        }
+    }
+
     /**
      * [DEPRECATED] Use _getMangas() instead
      * Callback based method to get all mangas from a website.
@@ -744,6 +759,10 @@ export default class Connector {
             chapterRegex: /\s*(?:^|ch\.?|ep\.?|chapter|chapitre|Bölüm|Chap|Chương|ตอนที่|Kapitel|Capitolo|Rozdział|Глава|Cap[ií]tulo|cap|[ée]pisode|Page|N[゜°]|DAY|#)\s?:?\s*([\d.?\-?v?]+)(?:\s|:|$)+/i, // $ not working in character groups => [\s\:$]+ does not work
             volumeRegex: /\s*(?:vol\.?|volume|Sezon|Том|Band|Cilt|tome)\s*(\d+)/i
         };
+    }
+
+    _getMangaOutputPath(manga) {
+        return [ manga.title ];
     }
 
     static batchDownload(mangaList, updateCallback, desc) {

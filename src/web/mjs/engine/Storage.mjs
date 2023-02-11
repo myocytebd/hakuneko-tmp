@@ -1,5 +1,6 @@
 import EbookGenerator from './EbookGenerator.mjs';
 import Chapter from './Chapter.mjs';
+import AsyncHelper from './AsyncHelper.mjs';
 
 const extensions = {
     // chapter format
@@ -163,16 +164,31 @@ export default class Storage {
      * Keep in mind that the manga titles in this map are sanitized and may not equal the raw (original) manga title.
      */
     getExistingMangaTitles(connector) {
+        // Manga directories are next to leaf directories' depth - 1.
         let directory = this._connectorOutputPath(connector);
-        return this._readDirectoryEntries(directory)
-            .then(entries => {
-                let titleMap = [];
-                // use key value pairs instead of plain titles to increase performance when looking up a certain manga title
-                entries.forEach(entry => {
-                    titleMap[entry] = true;
-                });
-                return Promise.resolve(titleMap);
-            });
+        async function* walk(dir) {
+            for await (const d of await this.fs.promises.opendir(dir)) {
+                const entry = this.path.join(dir, d.name);
+                if (d.isDirectory()) {
+                    yield [ entry, dir ];
+                    yield* walk(entry);
+                }
+            }
+        }
+        let aw = AsyncHelper.createAsyncWaitable();
+        setImmediate(async () => {
+            let leafDirs = new Set;
+            for await (const [ dir, parentDir ] of walk(directory)) {
+                leafDirs.set(dir);
+                leafDirs.delete(parentDir);
+            }
+            let mangaDirs = Array.from(leafDirs).map(leafDir => this.path.dirname(leafDir));
+            let mangaDirsMap = [];
+            // use key value pairs instead of plain titles to increase performance when looking up a certain manga title
+            for (let mangaDir of mangaDirs) mangaDirsMap[mangaDir] = true;
+            aw.resolve(mangaDirsMap);
+        });
+        return aw;
     }
 
     /**
@@ -431,11 +447,11 @@ export default class Storage {
     saveChapterPages(chapter, content) {
         try {
             let leadingZeroes = String(content.length).length;
-            let pageData = content.map((page, index) => {
+            let pageData = content.map((pageResult, index) => {
                 return {
-                    name: this._pageFileName(index + 1, page.type, leadingZeroes),
-                    type: page.type,
-                    data: page
+                    name: this._pageFileName(chapter, pageResult, index + 1, leadingZeroes),
+                    type: pageResult.blob.type,
+                    data: pageResult.blob
                 };
             });
 
@@ -728,36 +744,47 @@ export default class Storage {
      */
     _mangaOutputPath(manga) {
         let output = this._connectorOutputPath(manga.connector);
-        output = this.path.join(output, this.sanatizePath(manga.title));
+        let mangaPathRel = this.path.join(...[ manga.connector._getMangaOutputPath(manga) ].flat().map(this.sanatizePath.bind(this)));
+        output = this.path.join(output, mangaPathRel);
         return output;
     }
 
     /**
      * Helper function to generate the path where the chapter pages are stored.
      */
-    _chapterOutputPath(chapter) {
-        let output = this._mangaOutputPath(chapter.manga);
-        output = this.path.join(output, this.sanatizePath(chapter.title));
+    _getChapterPath(chapter, output, forOutput) {
+        const connectorConfig = chapter.manga.connector.config.storage || {};
+        let chapterFolderName = chapter.title;
+        if (connectorConfig.unaliasChapterFolderNameById)
+            chapterFolderName = `${chapter.title}_${chapter.id}`;
+        output = this.path.join(output, this.sanatizePath(chapterFolderName));
         if (chapter.status === statusDefinitions.offline) {
             return output;
         }
-        // only valid for loading anime episodes, ignored when save pages
-        if (this.fs.existsSync(output + extensions.m3u8)) {
-            return output + extensions.m3u8;
-        }
-        // only valid for loading anime episodes, ignored when save pages
-        if (this.fs.existsSync(output + extensions.mkv)) {
-            return output + extensions.mkv;
-        }
-        // only valid for loading anime episodes, ignored when save pages
-        if (this.fs.existsSync(output + extensions.mp4)) {
-            return output + extensions.mp4;
+        if (forOutput) {
+            // only valid for loading anime episodes, ignored when save pages
+            if (this.fs.existsSync(output + extensions.m3u8)) {
+                return output + extensions.m3u8;
+            }
+            // only valid for loading anime episodes, ignored when save pages
+            if (this.fs.existsSync(output + extensions.mkv)) {
+                return output + extensions.mkv;
+            }
+            // only valid for loading anime episodes, ignored when save pages
+            if (this.fs.existsSync(output + extensions.mp4)) {
+                return output + extensions.mp4;
+            }
         }
         // used when loading and saving manga chapters
         if (Engine.Settings.chapterFormat.value !== extensions.img) {
             output += Engine.Settings.chapterFormat.value;
         }
         return output;
+    }
+
+    _chapterOutputPath(chapter) {
+        let output = this._mangaOutputPath(chapter.manga);
+        return this._getChapterPath(chapter, output, true);
     }
 
     /**
@@ -792,30 +819,42 @@ export default class Storage {
         return path.replace(/[.\s]+$/g, '').trim();
     }
 
+    mimeToExtName(mimeType) {
+        if (mimeType.indexOf('image/webp') > -1) {
+            return '.webp';
+        } else if (mimeType.indexOf('image/jpeg') > -1) {
+            return '.jpg';
+        } else if (mimeType.indexOf('image/png') > -1) {
+            return '.png';
+        } else if (mimeType.indexOf('image/gif') > -1) {
+            return '.gif';
+        } else if (mimeType.indexOf('image/bmp') > -1) {
+            return '.bmp';
+        } else if (mimeType.indexOf('image/') > -1) {
+            return '.img';
+        } else {
+            return '';
+        }
+    }
+
     /**
      * Helper function to generate an entry name for a page (picture) depending on the given number and mime type
      */
-    _pageFileName(number, mimeType, leadingZeroes) {
-        let fileName = String(number).padStart(leadingZeroes, 0);
-        if (mimeType.indexOf('image/webp') > -1) {
-            return fileName + '.webp';
+    _pageFileName(chapter, pageResult, number, leadingZeroes) {
+        const connectorConfig = chapter.manga.connector.config.storage || {};
+        let mimeType = pageResult.blob.type;
+        let url = pageResult.url;
+        let urlFileName = decodeURIComponent(new URL(url).pathname.split('/').slice(-1));
+        if (connectorConfig.preserveServerPageFileName) {
+            return urlFileName;
+        } else {
+            let baseFileName = String(number).padStart(leadingZeroes, 0);
+            let extName = this.mimeToExtName(mimeType);
+            if (!extName && connectorConfig.preserveServerPageExtName)
+                extName = require('path').extname(urlFileName);
+            extName = extName || '.bin';
+            return baseFileName + extName;
         }
-        if (mimeType.indexOf('image/jpeg') > -1) {
-            return fileName + '.jpg';
-        }
-        if (mimeType.indexOf('image/png') > -1) {
-            return fileName + '.png';
-        }
-        if (mimeType.indexOf('image/gif') > -1) {
-            return fileName + '.gif';
-        }
-        if (mimeType.indexOf('image/bmp') > -1) {
-            return fileName + '.bmp';
-        }
-        if (mimeType.indexOf('image/') > -1) {
-            return fileName + '.img';
-        }
-        return fileName + '.bin';
     }
 
     /**

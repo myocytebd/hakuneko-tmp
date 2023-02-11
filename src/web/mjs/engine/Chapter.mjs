@@ -1,9 +1,7 @@
+const path = require('path');
+
 const events = {
     updated: 'updated'
-};
-
-const extensions = {
-    img: 'img'
 };
 
 const statusDefinitions = {
@@ -20,7 +18,7 @@ export default class Chapter extends EventTarget {
         this.manga = manga;
         this.id = id;
         this.title = title;
-        this.file = status === statusDefinitions.offline ? this._getRawFileName( title ) : this._getSanatizedFileName( title );
+        this.file = status === statusDefinitions.offline ? this._getRawFileName( title ) : this._getSanatizedFileName();
         this.language = language;
         this.status = status;
         this.pageProcess = false;
@@ -56,13 +54,12 @@ export default class Chapter extends EventTarget {
     /**
      *
      */
-    _getSanatizedFileName( title ) {
-        let name = Engine.Storage.sanatizePath( title );
-        let extension = Engine.Settings.chapterFormat.value !== extensions.img ? Engine.Settings.chapterFormat.value : '';
+    _getSanatizedFileName() {
+        let fullName = Engine.Storage._getChapterPath( this, '', false );
         return {
-            name: name,
-            extension: extension,
-            full: name + extension
+            name: path.basename(fullName, path.extname(fullName)),
+            extension: path.extname(fullName),
+            full: fullName
         };
     }
 

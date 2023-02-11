@@ -1,3 +1,5 @@
+import Connector from './Connector.mjs';
+
 const events = {
     updated: 'updated'
 };
@@ -127,7 +129,9 @@ export default class DownloadJob extends EventTarget {
             if(response.status !== 200) {
                 throw new Error(`Page " ${page}" returned status: ${response.status} - ${response.statusText}`);
             }
-            result.push(await response.blob());
+            let blob = await response.blob();
+            let url = Connector.decodeConnectorURI(page);
+            result.push({ url, blob });
             this.setProgress(this.progress + (pages.length ? 100/pages.length : 0));
         }
         return result;
@@ -149,7 +153,13 @@ export default class DownloadJob extends EventTarget {
          * TODO: abort/block all other page downloads that are still running for this job ...
          * https://stackoverflow.com/questions/31424561/wait-until-all-es6-promises-complete-even-rejected-promises
          */
-        return Promise.all(promises);
+        let blobs = await Promise.all(promises);
+        let results = [];
+        for (let i = 0; i < pages.length; i++) {
+            let url = Connector.decodeConnectorURI(pages[i]);
+            results.push({ url, blob: blobs[i] });
+        }
+        return results;
     }
 
     /**

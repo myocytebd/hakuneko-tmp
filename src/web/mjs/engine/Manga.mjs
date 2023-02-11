@@ -210,4 +210,8 @@ export default class Manga extends EventTarget {
         count = Math.min( digits, count );
         return '0'.repeat( digits - count ) + text;
     }
+
+    toString() {
+        return `|${this.title}|${this.id}|${this.status}|`;
+    }
 }
