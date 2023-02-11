@@ -58,7 +58,7 @@ export default class Request {
     _initializeProxy(settings) {
         // See: https://electronjs.org/docs/api/session#sessetproxyconfig-callback
         let proxy = {};
-        if (settings.proxyRules.value) {
+        if (settings.useProxy.value && settings.proxyRules.value) {
             proxy['proxyRules'] = settings.proxyRules.value;
         }
         this.electronRemote.session.defaultSession.setProxy(proxy, () => { });

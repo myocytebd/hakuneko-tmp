@@ -160,6 +160,13 @@ export default class Settings extends EventTarget {
             value: false
         };
 
+        this.useProxy = {
+            label: 'Enable Proxy Rules',
+            description: 'Toggle proxy rules, without clearing proxy settings',
+            input: types.checkbox,
+            value: false
+        };
+
         this.proxyRules = {
             label: 'Proxy Rules',
             description: [
