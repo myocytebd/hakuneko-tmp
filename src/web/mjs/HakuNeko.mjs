@@ -105,4 +105,27 @@ export default class HakuNeko {
             }
         }
     }
+
+    HakunekoManga$onDownloadMangasClick(hakunekoMangasUI) {
+        console.log('onDownloadMangasClick');
+        if (!hakunekoMangasUI.mangaList || hakunekoMangasUI.mangaList.length < 1)
+            return;
+        let mangaList = Array.from(hakunekoMangasUI.shadowRoot.querySelectorAll('ul.list li.manga.available')).map(elem => elem.__templatizeInstance.item);
+        if (mangaList.length < 1)
+            return;
+        let managListDesc = `[${mangaList.length}]: ${mangaList[0]}`;
+        let statusID = hakunekoMangasUI.$.status.addToQueue(`Batch loading manga list for download (${managListDesc})`);
+        Connector.batchDownload(mangaList, (manga, state) => {
+            let hakunekoChapters = hakunekoMangasUI.parentElement.querySelector('hakuneko-chapters');
+            if (manga !== null) {
+                // Chapter loaded for a manga
+                if (manga === hakunekoChapters.selectedManga && (!hakunekoChapters.chapterList || hakunekoChapters.chapterList.length < 1)) {
+                    hakunekoChapters.onSelectedMangaChanged(manga);
+                }
+            } else {
+                // All done
+                hakunekoMangasUI.$.status.removeFromQueue(statusID);
+            }
+        });
+    }
 }

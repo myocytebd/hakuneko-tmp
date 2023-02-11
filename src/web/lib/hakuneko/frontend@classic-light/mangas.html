@@ -94,6 +94,9 @@
                         <input id="paste" />
                         <i class="fas fa-fw fa-paste button" on-click="onPasteClick" title="Click to paste manga links from the clipboard (CTRL + V)"></i>
                     </td>
+                    <td width="1">
+                        <i class="fas fa-fw fa-download button" on-click="onDownloadMangasClick" title="Click to download all mangas currently shown in the filtered and sorted list"></i>
+                    </td>
                 </tr>
             </table>
         </div>
@@ -340,6 +343,8 @@
                     this.onUpdateMangaListClick(evt);
                 }
             }
+
+            onDownloadMangasClick(event) { Engine.HakunekoManga$onDownloadMangasClick(this); }
         }
         window.customElements.define( HakunekoMangas.is, HakunekoMangas );
     </script>

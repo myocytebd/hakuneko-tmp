@@ -68,7 +68,7 @@ export default class ClipboardConnector {
             }
         });
         Promise.all(promises)
-            .then(mangas => callback(null, mangas.filter(Boolean)))
+            .then(mangas => callback(null, mangas.flat().filter(Boolean)))
             .catch(error => callback(error, []));
     }
 }

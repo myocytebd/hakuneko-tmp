@@ -1,4 +1,5 @@
 import Manga from './Manga.mjs';
+import AsyncHelper from './AsyncHelper.mjs';
 
 /**
  * Base class for connector plugins
@@ -743,5 +744,52 @@ export default class Connector {
             chapterRegex: /\s*(?:^|ch\.?|ep\.?|chapter|chapitre|Bölüm|Chap|Chương|ตอนที่|Kapitel|Capitolo|Rozdział|Глава|Cap[ií]tulo|cap|[ée]pisode|Page|N[゜°]|DAY|#)\s?:?\s*([\d.?\-?v?]+)(?:\s|:|$)+/i, // $ not working in character groups => [\s\:$]+ does not work
             volumeRegex: /\s*(?:vol\.?|volume|Sezon|Том|Band|Cilt|tome)\s*(\d+)/i
         };
+    }
+
+    static batchDownload(mangaList, updateCallback, desc) {
+        if (mangaList.length === 0) return;
+        updateCallback = updateCallback || (() => {});
+        desc = desc || `[${mangaList.length}]: "${mangaList[0].title}" ...`;
+        let chapterLoadWaitables = new Set;
+        for (let manga of mangaList) {
+            let aw = AsyncHelper.createAsyncWaitable(manga);
+            try {
+                manga.getChapters((error, chapters) => {
+                    if (error) {
+                        aw.reject(error);
+                    } else {
+                        aw.resolve(chapters);
+                    }
+                });
+                chapterLoadWaitables.add(aw);
+            } catch (e) {
+                console.error(`batchDownload: failed to start update chapter list for ${manga}: ${desc}`, e);
+            }
+        }
+        setImmediate(async () => {
+            for await (let aw of AsyncHelper.raceIter(chapterLoadWaitables)) {
+                let manga = aw.data;
+                let chapters = aw.value, error = aw.reason || undefined;
+                let callbackState = { error };
+                try {
+                    updateCallback(manga, callbackState);
+                } catch (e) {
+                    console.warn(`batchDownload: error during updateCallback for ${manga}: ${desc}\n`, e);
+                }
+                if (!error) {
+                    let chapterList = chapters.filter(chapter => chapter.status === 'available');
+                    for (let chapter of chapterList) {
+                        Engine.DownloadManager.addDownload(chapter);
+                    }
+                } else {
+                    console.error(`batchDownload: failed to update chapter list for ${manga}: ${desc}`, error);
+                }
+            }
+            try {
+                updateCallback(null, {});
+            } catch (e) {
+                console.warn(`batchDownload: error during updateCallback for completion: ${desc}`, e);
+            }
+        });
     }
 }
