@@ -52,6 +52,7 @@ export default class HakuNeko {
     }
 
     async initialize() {
+        document.addEventListener('keyup', this.onKeyUp.bind(this));
         await this._connectors.initialize();
     }
 
@@ -93,5 +94,15 @@ export default class HakuNeko {
 
     get Version() {
         return this._version;
+    }
+
+    onKeyUp(event) {
+        console.log(`onKeyUp: key=${event.key}, ctrl=${event.ctrlKey}`);
+        let hakunekoAppUI = document.querySelector('hakuneko-app');
+        if (event.key === 'v' && event.ctrlKey) {
+            if (document.hasFocus() && document.activeElement === document.body) {
+                hakunekoAppUI.shadowRoot.querySelector('hakuneko-mangas').onPasteClick(event);
+            }
+        }
     }
 }
